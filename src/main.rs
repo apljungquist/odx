@@ -2,11 +2,13 @@ use std::{
     env,
     env::VarError,
     process::{exit, Command, ExitStatus},
+    str::FromStr,
 };
 
 use sentry::{
-    protocol::SpanStatus, ClientInitGuard, ClientOptions, Level, Transaction, TransactionContext,
-    TransactionOrSpan, User,
+    protocol::{SpanStatus, TraceId},
+    ClientInitGuard, ClientOptions, Level, Transaction, TransactionContext, TransactionOrSpan,
+    User,
 };
 
 fn dsn() -> Result<String, VarError> {
@@ -15,6 +17,12 @@ fn dsn() -> Result<String, VarError> {
         false => "ODX_DSN",
     };
     env::var(key)
+}
+
+const TRACE_ID_KEY: &str = "ODX_TRACE_ID";
+fn trace_id() -> Option<TraceId> {
+    let s = env::var(TRACE_ID_KEY).ok()?;
+    TraceId::from_str(&s).ok()
 }
 
 fn basename(path: &str) -> &str {
@@ -26,6 +34,7 @@ fn basename(path: &str) -> &str {
 struct Guard {
     _client_init_guard: ClientInitGuard,
     transaction: Option<Transaction>,
+    trace_id: TraceId,
     cmd: String,
 }
 
@@ -45,7 +54,8 @@ impl Guard {
 
         ctrlc::set_handler(move || {})?;
 
-        let ctx = TransactionContext::new(&cmd, "ui.action");
+        let trace_id = trace_id().unwrap_or_default();
+        let ctx = TransactionContext::new_with_trace_id(&cmd, "ui.action", trace_id);
         let transaction = sentry::start_transaction(ctx);
 
         sentry::configure_scope(|scope| {
@@ -62,6 +72,7 @@ impl Guard {
         Ok(Self {
             _client_init_guard: client_init_guard,
             transaction: Some(transaction),
+            trace_id,
             cmd,
         })
     }
@@ -98,7 +109,11 @@ fn main() {
 
     let status = match Guard::new(&program, &args) {
         Ok(guard) => {
-            let status = Command::new(program).args(args).status().unwrap();
+            let status = Command::new(program)
+                .args(args)
+                .env(TRACE_ID_KEY, guard.trace_id.to_string())
+                .status()
+                .unwrap();
             guard.finish(status);
             status
         }
