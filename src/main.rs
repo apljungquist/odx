@@ -1,7 +1,6 @@
 use std::{
     env,
     env::VarError,
-    fmt::Debug,
     process::{exit, Command, ExitStatus},
 };
 
@@ -17,6 +16,13 @@ fn dsn() -> Result<String, VarError> {
     };
     env::var(key)
 }
+
+fn basename(path: &str) -> &str {
+    path.rsplit('/')
+        .next()
+        .expect("split returns at least one element")
+}
+
 struct Guard {
     _client_init_guard: ClientInitGuard,
     transaction: Option<Transaction>,
@@ -24,8 +30,9 @@ struct Guard {
 }
 
 impl Guard {
-    fn new(cmd: &impl Debug) -> anyhow::Result<Self> {
-        let cmd = format!("{cmd:?}");
+    fn new(program: &str, args: &[String]) -> anyhow::Result<Self> {
+        let program = basename(program);
+        let cmd = format!("{program} {}", args.join(" "));
 
         let client_init_guard = sentry::init((
             dsn()?,
@@ -87,20 +94,29 @@ impl Drop for Guard {
 fn main() {
     let mut args = env::args().skip(1);
     let program = args.next().unwrap();
-    let mut cmd = Command::new(program);
-    cmd.args(args);
-    let status = match Guard::new(&cmd) {
+    let args: Vec<String> = args.collect();
+
+    let status = match Guard::new(&program, &args) {
         Ok(guard) => {
-            let status = cmd.status().unwrap();
-            guard.finish(cmd.status().unwrap());
+            let status = Command::new(program).args(args).status().unwrap();
+            guard.finish(status);
             status
         }
         Err(e) => {
             eprintln!("{:?}", e);
-            cmd.status().unwrap()
+            Command::new(program).args(args).status().unwrap()
         }
     };
     if let Some(code) = status.code() {
         exit(code);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn basename_works_on_example() {
+        assert_eq!(basename("/home/user/example"), "example");
     }
 }
