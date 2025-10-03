@@ -72,10 +72,10 @@ impl Guard {
 
         if status.success() {
             transaction.set_status(SpanStatus::Ok);
-            sentry::capture_message(&format!("{cmd} ({status})"), Level::Info);
+            sentry::capture_message(&format!("{cmd} succeeded ({status})"), Level::Info);
         } else {
             transaction.set_status(SpanStatus::UnknownError);
-            sentry::capture_message(&format!("{cmd} ({status})"), Level::Warning);
+            sentry::capture_message(&format!("{cmd} failed ({status})"), Level::Warning);
         }
         transaction.finish();
     }
