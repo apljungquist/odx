@@ -1,0 +1,9 @@
+[package]
+name = "odx"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.100"
+ctrlc = "3.5.0"
+sentry = { version = "0.43.0", default-features = false, features = ["backtrace", "contexts", "panic", "reqwest", "rustls"] }
